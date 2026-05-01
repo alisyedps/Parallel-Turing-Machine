@@ -1,0 +1,24 @@
+# Node
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite
+/dist/
+/.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+myenv/
+
+# OS
+.DS_Store
+Thumbs.db
