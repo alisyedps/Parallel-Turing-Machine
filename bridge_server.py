@@ -125,6 +125,7 @@ def run_operation():
             "a":           12,
             "b":           5,
             "operation":   1,        // 1=Add 2=Sub 3=Mul 4=Div 5=Mod
+            "mode":        "parallel", // "serial" or "parallel"
             "cores":       2,
             "threadsPerCore": 2
         }
@@ -139,15 +140,28 @@ def run_operation():
     a              = int(data.get("a",            0))
     b              = int(data.get("b",            0))
     op             = int(data.get("operation",    1))
+    mode           = str(data.get("mode", "parallel")).lower()
     cores          = int(data.get("cores",        1))
     threads_core   = int(data.get("threadsPerCore", 1))
 
     if op < 1 or op > 5:
         return jsonify({"error": "operation must be 1-5"}), 400
 
+    if mode not in ("serial", "parallel"):
+        return jsonify({"error": "mode must be 'serial' or 'parallel'"}), 400
+
+    if mode == "serial":
+        cores = 1
+        threads_core = 1
+
     # Build the stdin string the C program expects:
-    #   cores \n threadsPerCore \n op \n a \n b \n
-    stdin_input = f"{cores}\n{threads_core}\n{op}\n{a}\n{b}\n"
+    #   serial:   mode \n op \n a \n b \n
+    #   parallel: mode \n cores \n threadsPerCore \n op \n a \n b \n
+    mode_id = 1 if mode == "serial" else 2
+    if mode == "serial":
+        stdin_input = f"{mode_id}\n{op}\n{a}\n{b}\n"
+    else:
+        stdin_input = f"{mode_id}\n{cores}\n{threads_core}\n{op}\n{a}\n{b}\n"
 
     try:
         proc = subprocess.run(
@@ -164,6 +178,8 @@ def run_operation():
             return jsonify({"error": stderr or "Binary crashed"}), 500
 
         result = parse_output(stdout, op)
+        result["mode"]           = mode
+        result["op"]             = op
         result["cores"]          = cores
         result["threadsPerCore"] = threads_core
         result["totalThreads"]   = cores * threads_core

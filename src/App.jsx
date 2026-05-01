@@ -71,6 +71,13 @@ input[type=range].rng:disabled{opacity:.4;cursor:not-allowed;}
 .err-box{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px 16px;color:#ef4444;font-size:13px;font-family:'JetBrains Mono',monospace;margin-bottom:12px;}
 .spinner{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;animation:spin .7s linear infinite;display:inline-block;}
 .core-warn{font-size:11px;color:#f59e0b;font-family:'JetBrains Mono',monospace;margin-top:4px;}
+.mode-note{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-top:6px;}
+.compare{background:#0f141d;border:1px dashed #2e3a50;border-radius:12px;padding:12px 14px;margin-top:12px;}
+.compare-lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#64748b;font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+.compare-row{display:flex;justify-content:space-between;align-items:baseline;font-family:'JetBrains Mono',monospace;font-size:12px;color:#cbd5f5;margin-bottom:6px;}
+.compare-row:last-child{margin-bottom:0;}
+.compare-val{color:#f1f5f9;font-weight:700;}
+.compare-note{font-size:10px;color:#64748b;font-family:'JetBrains Mono',monospace;margin-top:6px;}
 @keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
@@ -89,6 +96,11 @@ const OPS = [
   { id:3, label:"Multiplication", symbol:"×" },
   { id:4, label:"Division",       symbol:"÷" },
   { id:5, label:"Modulo",         symbol:"%" },
+];
+
+const MODES = [
+  { id:"serial",   label:"Serial" },
+  { id:"parallel", label:"Parallel" },
 ];
 
 function Tape({ tape, label, animCells=false, max=72 }){
@@ -132,6 +144,7 @@ export default function App(){
   }
 
   const [op,       setOp]       = useState(1);
+  const [mode,     setMode]     = useState("parallel");
   const [a,        setA]        = useState(12);
   const [b,        setB]        = useState(5);
   const [cores,    setCores]    = useState(1);
@@ -142,6 +155,11 @@ export default function App(){
   const [error,    setError]    = useState(null);
   const [animKey,  setAnimKey]  = useState(0);
   const [serverOk, setServerOk] = useState(null); // null=checking true=ok false=down
+  const [compareSP, setCompareSP] = useState(null);
+  const [compareParallel, setCompareParallel] = useState(null);
+
+  const serialRunsRef = useRef({});
+  const parallelRunsRef = useRef({});
 
   /* ── Fetch available cores from the server on mount ── */
   useEffect(()=>{
@@ -166,6 +184,13 @@ export default function App(){
     if(maxCores && cores > maxCores) setCores(maxCores);
   }, [maxCores]);
 
+  useEffect(()=>{
+    if(mode === "serial"){
+      setCores(1);
+      setTpc(1);
+    }
+  }, [mode]);
+
   async function run(){
     setRunning(true);
     setError(null);
@@ -176,6 +201,7 @@ export default function App(){
         body: JSON.stringify({
           a: Number(a), b: Number(b),
           operation: op,
+          mode,
           cores, threadsPerCore: tpc
         })
       });
@@ -183,8 +209,35 @@ export default function App(){
       if(data.error){
         setError(data.error);
       } else {
-        setResult(data);
+        const stamped = {
+          ...data,
+          mode: data.mode || mode,
+          op: data.op ?? op
+        };
+        setResult(stamped);
         setAnimKey(k=>k+1);
+
+        const key = `${stamped.op}|${stamped.a}|${stamped.b}`;
+        let spCompare = null;
+        let pCompare = null;
+
+        if(stamped.mode === "serial"){
+          const p = parallelRunsRef.current[key];
+          if(p) spCompare = { serial: stamped, parallel: p };
+          serialRunsRef.current[key] = stamped;
+        } else {
+          const s = serialRunsRef.current[key];
+          if(s) spCompare = { serial: s, parallel: stamped };
+
+          const prevP = parallelRunsRef.current[key];
+          if(prevP && (prevP.cores !== stamped.cores || prevP.threadsPerCore !== stamped.threadsPerCore)){
+            pCompare = { prev: prevP, curr: stamped };
+          }
+          parallelRunsRef.current[key] = stamped;
+        }
+
+        setCompareSP(spCompare);
+        setCompareParallel(pCompare);
       }
     } catch(e){
       setError("Cannot reach the bridge server at " + API +
@@ -203,6 +256,35 @@ export default function App(){
           ? `${a} ÷ ${b}  →  Q:${result.quotient}  R:${result.remainder}`
           : "Done"
     : "";
+
+  const runtimeMs = (d)=>{
+    if(!d) return null;
+    const t = (d.parallelTime ?? d.serialTime);
+    return (t === null || t === undefined) ? null : (t * 1000);
+  };
+  const fmtMs = (ms)=>{
+    if(ms === null || ms === undefined || !Number.isFinite(ms)) return "n/a";
+    return `${ms.toFixed(3)} ms`;
+  };
+
+  const spSerial = compareSP?.serial;
+  const spParallel = compareSP?.parallel;
+  const spSerialMs = runtimeMs(spSerial);
+  const spParallelMs = runtimeMs(spParallel);
+  const spSpeedup = (spSerialMs && spParallelMs && spParallelMs > 0)
+    ? (spSerialMs / spParallelMs)
+    : null;
+
+  const ppPrev = compareParallel?.prev;
+  const ppCurr = compareParallel?.curr;
+  const ppPrevMs = runtimeMs(ppPrev);
+  const ppCurrMs = runtimeMs(ppCurr);
+  const ppSpeedup = (ppPrevMs && ppCurrMs && ppCurrMs > 0)
+    ? (ppPrevMs / ppCurrMs)
+    : null;
+  const ppDelta = (ppPrevMs && ppCurrMs && ppPrevMs > 0)
+    ? (((ppPrevMs - ppCurrMs) / ppPrevMs) * 100)
+    : null;
 
   return (
     <div className="tm-root">
@@ -232,6 +314,21 @@ export default function App(){
         <div className="card fadein" style={{animationDelay:".1s"}}>
 
           {/* Operation */}
+          <div className="card-lbl">mode</div>
+          <div className="ops">
+            {MODES.map(m=>{
+              const active = mode === m.id;
+              return (
+                <button key={m.id} className={`op-btn${active?" active":""}`} onClick={()=>setMode(m.id)}>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+          {mode === "serial" && (
+            <div className="mode-note">Serial mode forces 1 core and 1 thread.</div>
+          )}
+
           <div className="card-lbl">operation</div>
           <div className="ops">
             {OPS.map(o=>(
@@ -257,7 +354,7 @@ export default function App(){
               <RangeField label="cores" value={cores} min={1}
                 max={maxCores || 8}
                 onChange={v=>setCores(v)}
-                disabled={!serverOk || maxCores===null}/>
+                disabled={mode === "serial" || !serverOk || maxCores===null}/>
               {maxCores && (
                 <div className="core-warn">
                   Max allowed by your Ubuntu instance: {maxCores}
@@ -265,7 +362,7 @@ export default function App(){
               )}
             </div>
             <RangeField label="threads/core" value={tpc} min={1} max={8}
-              onChange={setTpc} disabled={false}/>
+              onChange={setTpc} disabled={mode === "serial"}/>
           </div>
 
           {/* Run */}
@@ -280,6 +377,7 @@ export default function App(){
             <span className="tinfo">
               <strong>{total}</strong> thread{total!==1?"s":""} &nbsp;·&nbsp;
               {cores} core{cores>1?"s":""}×{tpc}
+              {mode === "serial" && <span style={{marginLeft:6}}>serial mode</span>}
               {maxCores && cores > maxCores &&
                 <span style={{color:"#ef4444",marginLeft:6}}>⚠ exceeds system cores</span>}
             </span>
@@ -297,6 +395,7 @@ export default function App(){
               <div className="ans-eq">{ansStr}</div>
               <div className="live-badge">live · C binary</div>
               <div className="ans-badge">{result.operation}</div>
+              {result.mode && <div className="ans-badge">{result.mode}</div>}
             </div>
 
             <Tape tape={result.initialTape} label="initial tape"/>
@@ -354,6 +453,52 @@ export default function App(){
                 </div>
               </>
               
+            )}
+
+            {compareSP && (
+              <div className="compare">
+                <div className="compare-lbl">serial vs parallel comparison</div>
+                <div className="compare-row">
+                  <span>serial runtime</span>
+                  <span className="compare-val">{fmtMs(spSerialMs)}</span>
+                </div>
+                <div className="compare-row">
+                  <span>parallel runtime</span>
+                  <span className="compare-val">{fmtMs(spParallelMs)}</span>
+                </div>
+                <div className="compare-row">
+                  <span>speedup</span>
+                  <span className="compare-val">{spSpeedup ? `${spSpeedup.toFixed(2)}x` : "n/a"}</span>
+                </div>
+                <div className="compare-note">
+                  Serial: {spSerial?.cores} core(s) x {spSerial?.threadsPerCore} thread(s) · Parallel: {spParallel?.cores} core(s) x {spParallel?.threadsPerCore} thread(s)
+                </div>
+              </div>
+            )}
+
+            {compareParallel && (
+              <div className="compare">
+                <div className="compare-lbl">parallel comparison (same op and inputs)</div>
+                <div className="compare-row">
+                  <span>previous runtime</span>
+                  <span className="compare-val">{fmtMs(ppPrevMs)}</span>
+                </div>
+                <div className="compare-row">
+                  <span>current runtime</span>
+                  <span className="compare-val">{fmtMs(ppCurrMs)}</span>
+                </div>
+                <div className="compare-row">
+                  <span>speedup</span>
+                  <span className="compare-val">{ppSpeedup ? `${ppSpeedup.toFixed(2)}x` : "n/a"}</span>
+                </div>
+                <div className="compare-row">
+                  <span>change</span>
+                  <span className="compare-val">{ppDelta ? `${ppDelta.toFixed(1)}%` : "n/a"}</span>
+                </div>
+                <div className="compare-note">
+                  Prev: {ppPrev?.cores} core(s) x {ppPrev?.threadsPerCore} thread(s) · Curr: {ppCurr?.cores} core(s) x {ppCurr?.threadsPerCore} thread(s)
+                </div>
+              </div>
             )}
           </div>
         )}

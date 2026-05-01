@@ -274,20 +274,35 @@ int main(int argc, char* argv[]){
     printf("  Parallel Turing Machine \n");
     printf("  System detected cores : %d\n\n", maxCores);
 
-    int numCores;
+    int runMode;
+    printf("Select run mode:\n"
+           "  1: Serial (1 core, 1 thread)\n"
+           "  2: Parallel\n"
+           "Choice: ");
     while(1){
-        printf("Enter number of CPU cores to use (1-%d): ", maxCores);
-        if(scanf("%d", &numCores) != 1){ while(getchar()!='\n'); continue; }
-        if(numCores >= 1 && numCores <= maxCores) break;
-        printf("  ERROR: This Ubuntu instance only has %d core(s). "
-               "Enter a value between 1 and %d.\n", maxCores, maxCores);
+        if(scanf("%d", &runMode) != 1){ while(getchar()!='\n'); continue; }
+        if(runMode == 1 || runMode == 2) break;
+        printf("  Invalid. Enter 1 or 2: ");
     }
-    int numThreads;
-    while(1){
-        printf("Enter number of threads per core  : ");
-        if(scanf("%d", &numThreads) != 1){ while(getchar()!='\n'); continue; }
-        if(numThreads >= 1) break;
-        printf("  ERROR: Thread count must be at least 1.\n");
+
+    int numCores  = 1;
+    int numThreads = 1;
+    if(runMode == 2){
+        while(1){
+            printf("Enter number of CPU cores to use (1-%d): ", maxCores);
+            if(scanf("%d", &numCores) != 1){ while(getchar()!='\n'); continue; }
+            if(numCores >= 1 && numCores <= maxCores) break;
+            printf("  ERROR: This Ubuntu instance only has %d core(s). "
+                   "Enter a value between 1 and %d.\n", maxCores, maxCores);
+        }
+        while(1){
+            printf("Enter number of threads per core  : ");
+            if(scanf("%d", &numThreads) != 1){ while(getchar()!='\n'); continue; }
+            if(numThreads >= 1) break;
+            printf("  ERROR: Thread count must be at least 1.\n");
+        }
+    } else {
+        printf("Serial mode selected. Using 1 core and 1 thread.\n");
     }
 
     int totalThreads = numCores * numThreads;
