@@ -297,7 +297,7 @@ export default function App(){
             {serverOk === null ? "Connecting…" : serverOk ? "Live — Connected to C binary" : "Server offline"}
           </div>
           <h1 className="title">Turing Machine</h1>
-          <p className="subtitle">Parallel unary tape arithmetic · OpenMP · Ubuntu</p>
+          <p className="subtitle">Parallel unary tape arithmetic </p>
         </div>
 
         {/* Server offline warning */}
@@ -326,7 +326,7 @@ export default function App(){
             })}
           </div>
           {mode === "serial" && (
-            <div className="mode-note">Serial mode forces 1 core and 1 thread.</div>
+            <div className="mode-note">Serial mode.</div>
           )}
 
           <div className="card-lbl">operation</div>
@@ -357,7 +357,7 @@ export default function App(){
                 disabled={mode === "serial" || !serverOk || maxCores===null}/>
               {maxCores && (
                 <div className="core-warn">
-                  Max allowed by your Ubuntu instance: {maxCores}
+                  Max allowed: {maxCores}
                 </div>
               )}
             </div>
